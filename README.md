@@ -19,7 +19,18 @@ La vara que me puse es dura a propósito: en modo fiel, el cuadro del título ti
 
 ## Estado actual (honesto)
 
-Ya dibuja imagen real del juego y ya pasó del título al menú, pero la cadencia todavía es de **~1 cuadro por segundo** en esta máquina. Es decir: el camino gráfico está abierto, la velocidad no.
+Ya dibuja imagen real del juego y ya pasó del título al menú, pero la cadencia todavía es de **~2,8 cuadros distintos por segundo** a resolución nativa en esta máquina. Es decir: el camino gráfico está abierto, la velocidad no, y sigo a un orden de magnitud del objetivo.
+
+El número sale de una corrida con ventana abierta y con el reloj del juego avanzando **1,000 s por cada segundo real**, así que no hay turbo ni frame-skip inflándolo; y rechazo los promedios del arranque (casi no rasterizan): leo el cierre de la corrida. Lo que medí hoy:
+
+- **20,5 Mpx/s** de relleno por software. Una parte de la lentitud de los últimos días era **mi propia vara**: con la verificación caja a caja encendida el raster se caía a 9,0 Mpx/s. Ahora esa verificación es opt-in y el throughput volvió a subir.
+- La escalera por escala de pantalla, con el mismo motor: 1x ≈ 17,6 fps, **2x ≈ 4,4**, 3x ≈ 2,0, 1080p ≈ 1,1.
+
+La autopsia del sobre-dibujo que prometí abajo ya está medida, y me cambió el culpable:
+
+- Por cuadro presentado se escriben **~3,4 millones de píxeles** sobre una pantalla de 130.560. De ésos, los que cambian de verdad son ~86.000: **~40 pasadas** de sobreescritura (contra el viewport completo serían ~26 capas por cuadro). Yo estimaba ~72 pantallas; el orden de magnitud era ése.
+- El recorte por bounding box ya está flaco: los píxeles candidatos a dibujar son **1,0 veces** los que se escriben. O sea el derroche no está en pintar fuera de pantalla, está entre las capas.
+- Y acá me equivoqué: el clear de un viewport completo rinde **928.000 px/ms**, contra **5.800 px/ms** de un triángulo. Un clear es ~160 veces más barato por píxel, así que saltearse los clears que después se tapan (pasan en el 66 % de los cuadros) casi no paga. El costo real es el inner loop del rasterizado de triángulos, que es lo que tengo que atacar.
 
 Las capturas son del port, volcadas desde el framebuffer nativo a **480x272** (resolución interna real de PSP); las agrandé a 960x544 con vecino más cercano para que se lean, sin suavizar ni inventar detalle.
 
@@ -33,7 +44,7 @@ Las capturas son del port, volcadas desde el framebuffer nativo a **480x272** (r
 
 Lo que quiero llegar a conseguir, en este orden:
 
-- **Rendimiento primero en CPU**, porque la meta es que se mueva bien en hardware humilde: 60 fps sostenidos con escalado 2x (960x544) y después 3x. Hoy mido unos 9,4 Mpx/s de relleno y 2x@60 pide ~31 Mpx/s, así que el margen está en el rasterizador y en la cadencia de presentación, no en la suerte.
+- **Rendimiento primero en CPU**, porque la meta es que se mueva bien en hardware humilde: 60 fps sostenidos con escalado 2x (960x544) y después 3x. Hoy mido **20,5 Mpx/s** de relleno. Si cada píxel se escribiera una sola vez, 2x@60 pediría ~31 Mpx/s y estaría cerca; con el sobre-dibujo real del nivel (~26 capas por cuadro) la cuenta pasa a ~800 Mpx/s. Ahí está el problema, y no es la suerte: es el rasterizador.
 - **Escalera de fps reales, sin trampa**: 60 → 120 → 240 como opciones. Nada de frame-skip ni de "turbo" (acelerar el reloj del juego como pasa en PSP): la métrica de control es que el reloj del juego avance 1,000 s por cada segundo real, y que los cuadros presentados sean cuadros distintos.
 - **Escalera de calidad hasta 4K** (720p, 1080p, 2K, 4K) como **opción dejada lista** para cuando tenga una gráfica más potente, no para esta máquina.
 - **Entrada nativa**: mando de Xbox, teclado y mouse los tres, sin mapeos roñosos.
@@ -52,7 +63,7 @@ La GT 440 no tiene CUDA ni soporte moderno, así que todo el trabajo pesado hoy 
 
 ## Próximos días
 
-Voy a ir subiendo más información: la autopsia del sobre-dibujo (por qué se rellenan ~72 pantallas por cuadro), el histograma de áreas de primitivas, la cadencia de listas del GE por cuadro presentado, y las medicaciones de fps con la métrica anti-aceleración. También más capturas cuando haya gameplay.
+Voy a ir subiendo más información: el histograma de áreas de primitivas, la cadencia de listas del GE por cuadro presentado, y las medicaciones de fps con la métrica anti-aceleración. La autopsia del sobre-dibujo ya la cerré y está arriba (eran ~40 capas por cuadro, y el clear resultó no ser el cuello). Lo que sigue es el inner loop del triángulo. También más capturas cuando haya gameplay.
 
 Preguntas, correcciones y golpes de realidad, bienvenidos. Si alguien ya hizo un port AOT de un juego de PSP (o conoce material sobre el GE y su pipeline de blend), me interesa muchísimo leerlo.
 
